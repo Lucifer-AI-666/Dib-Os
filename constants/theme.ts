@@ -10,4 +10,4 @@ export {
   validateThemeColors,
   type ColorScheme,
   type ThemeColorPalette,
-} from "../lib/_core/theme";
+} from "@/lib/_core/theme";

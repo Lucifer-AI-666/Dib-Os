@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 
-import themeConfig from "../../theme.config.js";
+import themeConfig from "@/theme.config";
 
 export type ColorScheme = "light" | "dark";
 
@@ -36,7 +36,7 @@ export function validateThemeColors(
 
   (Object.keys(colors) as ThemeColorName[]).forEach((name) => {
     (["light", "dark"] as const).forEach((scheme) => {
-      if (!palette[scheme][name]) {
+      if (!Object.prototype.hasOwnProperty.call(palette[scheme], name)) {
         missing.push(`${scheme}.${String(name)}`);
       }
     });

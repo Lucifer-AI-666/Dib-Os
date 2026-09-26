@@ -13,4 +13,15 @@ describe("theme colors", () => {
 
     expect(validateThemeColors()).toEqual([]);
   });
+
+  it("reports missing palette entries by scheme and token", async () => {
+    const { validateThemeColors } = await import("../lib/_core/theme");
+
+    expect(
+      validateThemeColors(
+        { primary: { light: "#fff", dark: "#000" } } as never,
+        { light: { primary: "#fff" }, dark: {} } as never,
+      ),
+    ).toEqual(["dark.primary"]);
+  });
 });
