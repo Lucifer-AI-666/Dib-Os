@@ -28,6 +28,23 @@ function buildSchemePalette(colors: ThemeColorTokens): SchemePalette {
 
 export const SchemeColors = buildSchemePalette(ThemeColors);
 
+export function validateThemeColors(
+  colors: ThemeColorTokens = ThemeColors,
+  palette: SchemePalette = SchemeColors,
+): string[] {
+  const missing: string[] = [];
+
+  (Object.keys(colors) as ThemeColorName[]).forEach((name) => {
+    (["light", "dark"] as const).forEach((scheme) => {
+      if (!Object.prototype.hasOwnProperty.call(palette[scheme], name)) {
+        missing.push(`${scheme}.${String(name)}`);
+      }
+    });
+  });
+
+  return missing;
+}
+
 type RuntimePalette = SchemePaletteItem & {
   text: string;
   background: string;

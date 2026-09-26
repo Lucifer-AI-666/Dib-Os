@@ -16,12 +16,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>(systemScheme);
 
   const applyScheme = useCallback((scheme: ColorScheme) => {
+    // NativeWind drives native dark mode from its own color scheme state.
     nativewindColorScheme.set(scheme);
     Appearance.setColorScheme?.(scheme);
+
+    // On web, Tailwind reads data-theme and CSS variables from :root.
     if (typeof document !== "undefined") {
       const root = document.documentElement;
       root.dataset.theme = scheme;
-      root.classList.toggle("dark", scheme === "dark");
       const palette = SchemeColors[scheme];
       Object.entries(palette).forEach(([token, value]) => {
         root.style.setProperty(`--color-${token}`, value);
@@ -39,18 +41,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [applyScheme, colorScheme]);
 
   const themeVariables = useMemo(
-    () =>
-      vars({
-        "color-primary": SchemeColors[colorScheme].primary,
-        "color-background": SchemeColors[colorScheme].background,
-        "color-surface": SchemeColors[colorScheme].surface,
-        "color-foreground": SchemeColors[colorScheme].foreground,
-        "color-muted": SchemeColors[colorScheme].muted,
-        "color-border": SchemeColors[colorScheme].border,
-        "color-success": SchemeColors[colorScheme].success,
-        "color-warning": SchemeColors[colorScheme].warning,
-        "color-error": SchemeColors[colorScheme].error,
-      }),
+    () => {
+      const palette = SchemeColors[colorScheme];
+
+      // Native uses vars() on the root view because there is no DOM :root/data-theme.
+      return vars(
+        Object.fromEntries(
+          Object.entries(palette).map(([token, value]) => [`color-${token}`, value]),
+        ),
+      );
+    },
     [colorScheme],
   );
 
@@ -61,7 +61,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }),
     [colorScheme, setColorScheme],
   );
-  console.log(value, themeVariables)
 
   return (
     <ThemeContext.Provider value={value}>
