@@ -16,6 +16,7 @@
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "android": "expo start --android",
     "ios": "expo start --ios",
+    "bridge": "tsx bridge/cli.ts",
     "qr": "node scripts/generate_qr.mjs"
   },
   "dependencies": {
