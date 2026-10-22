@@ -60,11 +60,20 @@ const MAX_TOTAL_BYTES = 1024 * 1024;
 export class Bridge {
   private devices = new Map<string, PairedDevice>();
   private seen = new Map<string, number>();
+  private approvalQueue: Promise<unknown> = Promise.resolve();
+  private approver: Approver;
   constructor(
     private probe: NetworkProbe,
     private now: () => number = Date.now,
-    private approver: Approver = async () => false,
-  ) {}
+    approver: Approver = async () => false,
+  ) {
+    // Approvals are strictly one at a time: a prompt is shown only after the previous one is answered.
+    this.approver = (dev, req) => {
+      const run = this.approvalQueue.then(() => approver(dev, req));
+      this.approvalQueue = run.catch(() => undefined);
+      return run;
+    };
+  }
 
   pair(d: PairedDevice) {
     this.devices.set(d.deviceId, { ...d, allowedFolders: d.allowedFolders.map((f) => path.resolve(f)) });

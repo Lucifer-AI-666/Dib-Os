@@ -90,65 +90,73 @@ export const linuxProbe: NetworkProbe = async () => {
   }
 };
 
-/** Parses `netsh wlan show interfaces` (English output). Only a "connected" interface counts. */
-export function parseNetshWlan(text: string): { name: string; ssid: string; bssid: string } | null {
-  const blocks = text.split(/\r?\n\s*\r?\n/);
-  for (const block of blocks) {
-    const f: Record<string, string> = {};
-    for (const line of block.split(/\r?\n/)) {
-      const m = line.match(/^\s*([A-Za-z0-9 ]+?)\s*:\s(.*)$/);
-      if (m && !(m[1] in f)) f[m[1].toLowerCase()] = m[2].trim();
-    }
-    if (f["state"]?.toLowerCase() === "connected" && f["ssid"] && f["bssid"] && f["name"]) {
-      return { name: f["name"], ssid: f["ssid"], bssid: f["bssid"].toLowerCase().replace(/-/g, ":") };
-    }
-  }
-  return null;
-}
-
-export interface WindowsIpInfo {
-  InterfaceAlias: string;
+/**
+ * Locale-independent Windows data. Everything comes from numeric/structured APIs
+ * (CIM/WMI + NetTCPIP cmdlets), never from translated text.
+ */
+export interface WindowsNetInfo {
+  /** NDIS media state: 1 = connected (MediaConnectState). */
+  MediaConnectState: number;
+  /** NDIS physical medium: 9 = native 802.11 Wi-Fi. */
+  NdisPhysicalMedium: number;
+  /** UTF-8 bytes of the SSID string from MSNdis_80211_ServiceSetIdentifier. */
+  SsidBytes: number[];
+  /** BSSID bytes from MSNdis_80211_BaseServiceSetIdentifier (6 bytes). */
+  BssidBytes: number[];
   IPAddress: string;
   PrefixLength: number;
   Gateway: string;
   GatewayMac: string;
 }
 
-/** Combines netsh + PowerShell data. Fails closed if the default route is not via the Wi-Fi interface. */
-export function buildWindowsState(wlanText: string, ip: WindowsIpInfo | null): NetworkState | null {
-  const w = parseNetshWlan(wlanText);
-  if (!w || !ip) return null;
-  if (w.name.toLowerCase() !== String(ip.InterfaceAlias).toLowerCase()) return null;
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip.IPAddress) || !ip.GatewayMac || !ip.Gateway) return null;
-  const bits = Number(ip.PrefixLength);
+const hexMac = (b: number[]) => b.map((x) => (x & 255).toString(16).padStart(2, "0")).join(":");
+
+/** Fails closed unless the default-route adapter is a connected Wi-Fi adapter with complete data. */
+export function buildWindowsState(info: WindowsNetInfo | null): NetworkState | null {
+  if (!info) return null;
+  if (info.MediaConnectState !== 1 || info.NdisPhysicalMedium !== 9) return null;
+  if (!Array.isArray(info.SsidBytes) || info.SsidBytes.length === 0 || info.SsidBytes.length > 32) return null;
+  if (!Array.isArray(info.BssidBytes) || info.BssidBytes.length !== 6) return null;
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(info.IPAddress) || !info.Gateway || !info.GatewayMac) return null;
+  const bits = Number(info.PrefixLength);
   if (!Number.isInteger(bits) || bits < 8 || bits > 32) return null;
+  const ssid = Buffer.from(info.SsidBytes.map((x) => x & 255)).toString("utf8");
+  if (!ssid) return null;
   return {
-    ssid: w.ssid,
-    bssid: w.bssid,
-    gatewayMac: ip.GatewayMac.toLowerCase().replace(/-/g, ":"),
-    subnet: subnetOf(ip.IPAddress, bits),
-    localIp: ip.IPAddress,
+    ssid,
+    bssid: hexMac(info.BssidBytes),
+    gatewayMac: info.GatewayMac.toLowerCase().replace(/-/g, ":"),
+    subnet: subnetOf(info.IPAddress, bits),
+    localIp: info.IPAddress,
   };
 }
 
 const PS_SCRIPT = `
 $ErrorActionPreference='Stop'
 $r = Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Sort-Object { $_.RouteMetric + $_.InterfaceMetric } | Select-Object -First 1
+$ad = Get-NetAdapter -InterfaceIndex $r.InterfaceIndex
 $a = Get-NetIPAddress -InterfaceIndex $r.InterfaceIndex -AddressFamily IPv4 | Select-Object -First 1
-$n = Get-NetNeighbor -IPAddress $r.NextHop -InterfaceIndex $r.InterfaceIndex -ErrorAction Stop | Where-Object { $_.LinkLayerAddress } | Select-Object -First 1
-[pscustomobject]@{ InterfaceAlias=$a.InterfaceAlias; IPAddress=$a.IPAddress; PrefixLength=$a.PrefixLength; Gateway=$r.NextHop; GatewayMac=$n.LinkLayerAddress } | ConvertTo-Json -Compress
+$n = Get-NetNeighbor -IPAddress $r.NextHop -InterfaceIndex $r.InterfaceIndex | Where-Object { $_.LinkLayerAddress } | Select-Object -First 1
+$d = $ad.InterfaceDescription
+$s = Get-CimInstance -Namespace root/wmi -ClassName MSNdis_80211_ServiceSetIdentifier | Where-Object { $_.InstanceName -eq $d -and $_.Active } | Select-Object -First 1
+$b = Get-CimInstance -Namespace root/wmi -ClassName MSNdis_80211_BaseServiceSetIdentifier | Where-Object { $_.InstanceName -eq $d -and $_.Active } | Select-Object -First 1
+[pscustomobject]@{
+  MediaConnectState=[int]$ad.MediaConnectionState.value__; NdisPhysicalMedium=[int]$ad.NdisPhysicalMedium
+  SsidBytes=@([System.Text.Encoding]::UTF8.GetBytes([string]$s.Ndis80211SsId))
+  BssidBytes=@($b.Ndis80211MacAddress)
+  IPAddress=$a.IPAddress; PrefixLength=$a.PrefixLength; Gateway=$r.NextHop; GatewayMac=$n.LinkLayerAddress
+} | ConvertTo-Json -Compress
 `;
 
-/** Real Windows probe (netsh + PowerShell). Any failure => null => reads refused. */
+/** Real Windows probe (PowerShell/CIM, no localized text). Any failure => null => reads refused. */
 export const windowsProbe: NetworkProbe = async () => {
   try {
-    const { stdout: wlan } = await run("netsh", ["wlan", "show", "interfaces"], { windowsHide: true, timeout: 10_000 });
-    const { stdout: ps } = await run(
+    const { stdout } = await run(
       "powershell.exe",
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", PS_SCRIPT],
       { windowsHide: true, timeout: 15_000 },
     );
-    return buildWindowsState(wlan, JSON.parse(ps) as WindowsIpInfo);
+    return buildWindowsState(JSON.parse(stdout) as WindowsNetInfo);
   } catch {
     return null;
   }

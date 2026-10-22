@@ -14,7 +14,7 @@ Read-mostly local bridge. mTLS 1.3 transport + AES-256-GCM envelopes, no public 
    (current values are what the bridge prints/probes while connected to your Wi-Fi; `ipconfig`, `arp -a`, `netsh wlan show interfaces`).
 6. Run `pnpm bridge bridge.config.json`.
 
-The Windows probe uses `netsh wlan show interfaces` (**English-language output**) and PowerShell (`Get-NetRoute`, `Get-NetIPAddress`, `Get-NetNeighbor`). It fails closed (reads refused) if disconnected, unparsable, or if the default route is not the Wi-Fi interface. Linux uses `nmcli`/`ip`.
+The Windows probe uses PowerShell/CIM numeric fields (`MediaConnectionState`, `NdisPhysicalMedium`, `MSNdis_80211_*` in root/wmi, `Get-NetRoute/IPAddress/Neighbor`), so it does not depend on the Windows display language. It fails closed (reads refused) if disconnected, unparsable, or if the default route is not a connected Wi-Fi adapter. Linux uses `nmcli`/`ip`.
 
 ## Guarantees
 - Client must present a certificate signed by your CA **and** matching the paired device's fingerprint; unknown certs fail the TLS handshake.
@@ -22,8 +22,9 @@ The Windows probe uses `netsh wlan show interfaces` (**English-language output**
 - Network (SSID + gateway MAC + subnet, optional BSSID) is re-verified on every request and every 3 s for open connections, which are destroyed on change, unverifiable network or revocation.
 - `read` returns file contents (≤256 KB per file, text only, query-filtered) from authorized folders only; OS permission errors are respected.
 - write/move/delete require a live operator "yes" on the bridge console for each operation; a client flag cannot grant it. Without an approver, they are denied.
+- Approval prompts are queued: one at a time.
 - Replay/stale protection; answers include `source`, `retrievedAt`, `unreachable`.
 - GitHub/Vercel/Codacy: tokens via `GITHUB_TOKEN`, `VERCEL_TOKEN`, `CODACY_API_TOKEN` (presence check only; no API calls yet).
 
 ## Verification status
-`pnpm vitest run bridge` runs unit tests, Windows parser fixtures and a real mTLS server on loopback where the network state is changed. The Windows probe itself and a real Wi-Fi switch have **not** been exercised on a physical Windows machine yet; do this manually: start the bridge, query OK, switch Wi-Fi, query must return `network_changed`/`network_unverifiable`.
+`pnpm vitest run bridge` runs unit tests, Windows parser fixtures and a real mTLS server on loopback where the network state is changed. Note: when the Wi-Fi really changes, the PC's IP changes too, so the client usually sees "cannot connect" rather than `network_changed` (still safe). The Windows PowerShell probe and a real Wi-Fi switch have **not** been exercised on a physical Windows machine yet; do this manually: start the bridge, query OK, switch Wi-Fi, query must return `network_changed`/`network_unverifiable`.

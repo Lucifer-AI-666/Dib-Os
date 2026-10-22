@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { Bridge, type Answer, type Approver, type Connection, type Message } from "./bridge";
 import { newPairingKey, open, seal, type Envelope } from "./channel";
 import { integrationStatus } from "./integrations";
-import { buildWindowsState, parseNetshWlan, type NetworkState } from "./network";
+import { buildWindowsState, type NetworkState } from "./network";
 import { createBridgeServer } from "./server";
 
 const net: NetworkState = { ssid: "Home", gatewayMac: "aa:bb:cc:dd:ee:ff", subnet: "192.168.1.0/24", localIp: "192.168.1.10" };
@@ -103,29 +103,42 @@ describe("mutations need separate operator approval", () => {
   });
 });
 
-describe("windows detection", () => {
-  const wlan = `
-There is 1 interface on the system:
-
-    Name                   : Wi-Fi
-    Description            : Intel(R) Wi-Fi 6
-    State                  : connected
-    SSID                   : Home
-    BSSID                  : AA-BB-CC-00-11-22
-    Radio type             : 802.11ax
-`;
-  const ip = { InterfaceAlias: "Wi-Fi", IPAddress: "192.168.1.44", PrefixLength: 24, Gateway: "192.168.1.1", GatewayMac: "AA-BB-CC-DD-EE-FF" };
-  it("parses netsh and builds a state", () => {
-    expect(parseNetshWlan(wlan)?.ssid).toBe("Home");
-    expect(buildWindowsState(wlan, ip)).toEqual({
-      ssid: "Home", bssid: "aa:bb:cc:00:11:22", gatewayMac: "aa:bb:cc:dd:ee:ff", subnet: "192.168.1.0/24", localIp: "192.168.1.44",
+describe("windows detection (locale independent)", () => {
+  const info = {
+    MediaConnectState: 1, NdisPhysicalMedium: 9,
+    SsidBytes: [...Buffer.from("Casa")], BssidBytes: [0xaa, 0xbb, 0xcc, 0, 0x11, 0x22],
+    IPAddress: "192.168.1.44", PrefixLength: 24, Gateway: "192.168.1.1", GatewayMac: "AA-BB-CC-DD-EE-FF",
+  };
+  it("builds a state from numeric fields only", () => {
+    expect(buildWindowsState(info)).toEqual({
+      ssid: "Casa", bssid: "aa:bb:cc:00:11:22", gatewayMac: "aa:bb:cc:dd:ee:ff", subnet: "192.168.1.0/24", localIp: "192.168.1.44",
     });
   });
-  it("fails closed when disconnected or default route is not Wi-Fi", () => {
-    expect(buildWindowsState(wlan.replace("connected", "disconnected"), ip)).toBeNull();
-    expect(buildWindowsState(wlan, { ...ip, InterfaceAlias: "Ethernet" })).toBeNull();
-    expect(buildWindowsState(wlan, null)).toBeNull();
-    expect(buildWindowsState("garbage", ip)).toBeNull();
+  it("fails closed when disconnected, not Wi-Fi, or data incomplete", () => {
+    expect(buildWindowsState({ ...info, MediaConnectState: 0 })).toBeNull();
+    expect(buildWindowsState({ ...info, NdisPhysicalMedium: 14 })).toBeNull();
+    expect(buildWindowsState({ ...info, SsidBytes: [] })).toBeNull();
+    expect(buildWindowsState({ ...info, BssidBytes: [1] })).toBeNull();
+    expect(buildWindowsState({ ...info, GatewayMac: "" })).toBeNull();
+    expect(buildWindowsState(null)).toBeNull();
+  });
+});
+
+describe("approval queue", () => {
+  it("asks the operator one operation at a time", async () => {
+    let active = 0, maxActive = 0;
+    const order: string[] = [];
+    const { ask, dir } = setup(async (_d, req) => {
+      active++; maxActive = Math.max(maxActive, active);
+      order.push(req.kind);
+      await new Promise((r) => setTimeout(r, 30));
+      active--;
+      return false;
+    });
+    const f = path.join(dir, "report.txt");
+    await Promise.all([ask({ kind: "delete", path: f }), ask({ kind: "write", path: f, content: "x" })]);
+    expect(maxActive).toBe(1);
+    expect(order).toHaveLength(2);
   });
 });
 
