@@ -27,7 +27,11 @@ export function createTRPCClient() {
         transformer: superjson,
         async headers() {
           const token = await Auth.getSessionToken();
-          return token ? { Authorization: `Bearer ${token}` } : {};
+          const apiToken =
+            process.env.EXPO_PUBLIC_DIB_API_TOKEN ||
+            (typeof window !== "undefined" ? window.localStorage?.getItem("dib_api_token") : null);
+          const bearer = apiToken || token;
+          return bearer ? { Authorization: `Bearer ${bearer}` } : {};
         },
         // Custom fetch to include credentials for cookie-based auth
         fetch(url, options) {

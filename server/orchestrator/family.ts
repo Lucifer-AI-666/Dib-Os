@@ -1,8 +1,8 @@
 /**
  * La Famiglia.
  *
- * Quattro identita' locali (Dio, Michele, Matildina, Lucifero) piu' gli agenti
- * esterni dell'ecosistema TAUROS, mappati dai repository dell'utente. Tutti,
+ * Sei identita' della ROM (Dio, Michele, Matildina, Lucifero, Tauros, Jarvis)
+ * piu' gli agenti esterni ancora solo registrati. Tutti,
  * senza eccezione, rispondono al Nonno Saggio prima di agire.
  *
  * Gli adattatori dei membri verificano SEMPRE la benedizione: senza un permesso
@@ -128,32 +128,30 @@ export function buildFamily(): FamilyMember[] {
       adapter: localAdapter("lucifero", "Lucifero"),
     },
 
-    // ── Agenti esterni (registrati, non ancora live) ────────────────────
+    // ── Tauros e Jarvis: identita' della ROM, non solo schede esterne ──
     {
       id: "tauros",
       name: "Tauros",
       emoji: "🐂",
       role: "Il Corpo operativo. Web e applicazioni.",
-      origin: "esterno",
-      repo: "anouardib88/Taurosweb",
-      skills: ["web", "operazioni", "frontend", "app"],
-      trust: 55,
+      origin: "locale",
+      skills: ["web", "operazioni", "frontend", "app", "memoria"],
+      trust: 80,
       maxRisk: 1,
-      status: "registrato",
-      adapter: externalAdapter("tauros", "Tauros", "anouardib88/Taurosweb"),
+      status: "attivo",
+      adapter: localAdapter("tauros", "Tauros"),
     },
     {
       id: "jarvis",
       name: "Jarvis",
       emoji: "🤖",
       role: "Il Maggiordomo. Assistenza e automazione.",
-      origin: "esterno",
-      repo: "anouardib88/jarvisdib",
+      origin: "locale",
       skills: ["assistenza", "automazione", "task", "promemoria"],
-      trust: 55,
+      trust: 80,
       maxRisk: 1,
-      status: "registrato",
-      adapter: externalAdapter("jarvis", "Jarvis", "anouardib88/jarvisdib"),
+      status: "attivo",
+      adapter: localAdapter("jarvis", "Jarvis"),
     },
     {
       id: "oraculum",

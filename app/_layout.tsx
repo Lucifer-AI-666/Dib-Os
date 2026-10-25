@@ -46,6 +46,9 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const unsubscribe = subscribeSafeAreaInsets(handleSafeAreaUpdate);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
     return () => unsubscribe();
   }, [handleSafeAreaUpdate]);
 

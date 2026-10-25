@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Appearance, View, useColorScheme as useSystemColorScheme } from "react-native";
+import { Appearance, Platform, View, useColorScheme as useSystemColorScheme } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
@@ -16,9 +16,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>(systemScheme);
 
   const applyScheme = useCallback((scheme: ColorScheme) => {
-    // NativeWind drives native dark mode from its own color scheme state.
-    nativewindColorScheme.set(scheme);
-    Appearance.setColorScheme?.(scheme);
+    // Sul web NativeWind è in dark mode "media" e rifiuta il set manuale.
+    // Il tema arriva da data-theme e dalle variabili CSS qui sotto.
+    if (Platform.OS !== "web") {
+      nativewindColorScheme.set(scheme);
+      Appearance.setColorScheme?.(scheme);
+    }
 
     // On web, Tailwind reads data-theme and CSS variables from :root.
     if (typeof document !== "undefined") {

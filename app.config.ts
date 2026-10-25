@@ -28,7 +28,7 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "Divine Nexus",
+  appName: "Dib'OS",
   appSlug: "divine_nexus",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   logoUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663356756702/dhk4mdM6Hp9etFd5XVadYT/icon-6Rd5x26nRMRuchUWVshXkE.webp",
@@ -43,7 +43,7 @@ const config: ExpoConfig = {
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
-  description: "Multi-identity AI chat with automations and shell CLI - TAUROS Security Ecosystem",
+  description: "Dib'OS, la ROM della famiglia: chat, automazioni, Nonno e shell.",
   scheme: env.scheme,
   userInterfaceStyle: "dark",
   newArchEnabled: true,
@@ -83,6 +83,14 @@ const config: ExpoConfig = {
     bundler: "metro",
     output: "static",
     favicon: "./assets/images/favicon.png",
+    name: "Dib'OS",
+    shortName: "Dib'OS",
+    lang: "it",
+    themeColor: "#0a0a0a",
+    backgroundColor: "#0a0a0a",
+    display: "standalone",
+    startUrl: "/",
+    scope: "/",
   },
   plugins: [
     "expo-router",

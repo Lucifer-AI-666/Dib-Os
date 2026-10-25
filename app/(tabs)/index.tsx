@@ -7,10 +7,13 @@ import {
   FlatList,
   Alert,
   Platform,
+  Linking,
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
+import { DIB_PRICE_LABEL } from "@/shared/price";
+import * as SecureStore from "expo-secure-store";
 
 // Identity definitions
 const IDENTITIES = {
@@ -42,6 +45,20 @@ const IDENTITIES = {
     theme: "lucifer-theme",
     color: "#ff6600",
   },
+  tauros: {
+    name: "Tauros",
+    emoji: "🐂",
+    description: "Il corpo operativo. Cervello e operazioni.",
+    theme: "tauros-theme",
+    color: "#c4a35a",
+  },
+  jarvis: {
+    name: "Jarvis",
+    emoji: "🤖",
+    description: "Il maggiordomo. Assistenza e automazione.",
+    theme: "jarvis-theme",
+    color: "#7ec8e3",
+  },
 };
 
 type IdentityKey = keyof typeof IDENTITIES;
@@ -59,7 +76,7 @@ export default function ChatScreen() {
     {
       id: "1",
       role: "system",
-      content: "🦂 Divine Nexus inizializzato. Benvenuto nel TAUROS Ecosystem.",
+      content: "Dib'OS ROM caricata. Famiglia pronta: Dio, Michele, Matildina, Lucifero, Tauros, Jarvis.",
       timestamp: Date.now(),
     },
   ]);
@@ -67,12 +84,54 @@ export default function ChatScreen() {
   const [currentIdentity, setCurrentIdentity] = useState<IdentityKey>("matildina");
   const [isLoading, setIsLoading] = useState(false);
   const [showIdentitySelector, setShowIdentitySelector] = useState(false);
+  const [trialId, setTrialId] = useState("");
+  const [daysLeft, setDaysLeft] = useState(3);
+  const [trialActive, setTrialActive] = useState(true);
+  const trialStart = trpc.trial.start.useMutation();
+  const checkout = trpc.trial.checkout.useMutation();
   const flatListRef = useRef<FlatList>(null);
 
   // tRPC mutation for chat
   const chatMutation = trpc.chat.send.useMutation();
 
   // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    let cancelled = false;
+    const open = async () => {
+      let id = "";
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        id = window.localStorage.getItem("dib_trial_id") ?? "";
+        if (!/^[A-Za-z0-9-]{16,64}$/.test(id)) {
+          id = crypto.randomUUID().replace(/-/g, "");
+          window.localStorage.setItem("dib_trial_id", id);
+        }
+      } else {
+        id = (await SecureStore.getItemAsync("dib_trial_id")) ?? "";
+        if (!/^[A-Za-z0-9-]{16,64}$/.test(id)) {
+          id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+          await SecureStore.setItemAsync("dib_trial_id", id);
+        }
+      }
+      if (cancelled) return;
+      setTrialId(id);
+      trialStart.mutate(
+        { trialId: id },
+        {
+          onSuccess: (trial) => {
+            setDaysLeft(trial.daysLeft);
+            setTrialActive(trial.active);
+          },
+        }
+      );
+    };
+    open();
+    return () => {
+      cancelled = true;
+    };
+    // La prova si apre una volta all'avvio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -82,7 +141,7 @@ export default function ChatScreen() {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || isLoading) return;
+    if (!inputText.trim() || isLoading || !trialActive || !trialId) return;
 
     const userText = inputText.trim();
 
@@ -111,8 +170,13 @@ export default function ChatScreen() {
       const result = await chatMutation.mutateAsync({
         message: userText,
         identity: currentIdentity,
+        trialId,
         history,
       });
+      if (result.trial) {
+        setDaysLeft(result.trial.daysLeft);
+        setTrialActive(result.trial.active);
+      }
 
       const entityMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -222,8 +286,39 @@ export default function ChatScreen() {
   return (
     <ScreenContainer className="flex-1 bg-background">
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-border">
-        <Text className="text-lg font-bold text-foreground">Divine Nexus</Text>
+      <View className="px-4 pt-3 pb-2 border-b border-border gap-2">
+        <Text className="text-xs font-semibold tracking-widest text-muted">DIB'OS · ROM</Text>
+        <Text className="text-lg font-bold text-foreground">Dib'OS</Text>
+        <Text className="text-xs text-muted leading-5">
+          La ROM della famiglia. Doveva essere finita da tempo: chat, automazioni, Nonno e shell stanno in questa immagine.
+        </Text>
+        <Text className="text-xs text-foreground">
+          {trialActive
+            ? `Prova di 3 giorni, senza limite di messaggi. ${daysLeft === 1 ? "Resta 1 giorno." : `Restano ${daysLeft} giorni.`}`
+            : "I 3 giorni di prova sono finiti. Per continuare bisogna pagare."}
+        </Text>
+        {!trialActive && (
+          <TouchableOpacity
+            onPress={() => {
+              if (!trialId) return;
+              checkout.mutate(
+                { trialId },
+                {
+                  onSuccess: (result) => {
+                    if (result.url) Linking.openURL(result.url);
+                    else Alert.alert("Pagamento", "Il pagamento non è ancora collegato a Stripe.");
+                  },
+                  onError: () => Alert.alert("Pagamento", "Non riesco ad aprire il pagamento."),
+                }
+              );
+            }}
+            className="self-start px-3 py-2 rounded-lg bg-primary"
+          >
+            <Text className="text-xs font-semibold text-background">Paga {DIB_PRICE_LABEL}</Text>
+          </TouchableOpacity>
+        )}
+      <View className="flex-row items-center justify-between">
+        <Text className="text-sm font-semibold text-foreground">Famiglia</Text>
         <TouchableOpacity
           onPress={() => setShowIdentitySelector(!showIdentitySelector)}
           className="flex-row items-center gap-2 px-3 py-1 rounded-full"
@@ -232,6 +327,7 @@ export default function ChatScreen() {
           <Text className="text-sm">{currentIdentityData.emoji}</Text>
           <Text className="text-xs font-semibold text-foreground">{currentIdentityData.name}</Text>
         </TouchableOpacity>
+      </View>
       </View>
 
       {/* Identity Selector Modal */}
@@ -285,18 +381,18 @@ export default function ChatScreen() {
           <TextInput
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Invoca o interroga il Nexus..."
+            placeholder={trialActive ? "Invoca o interroga il Nexus..." : "Prova finita"}
             placeholderTextColor={colors.muted}
             className="flex-1 px-4 py-2 rounded-full bg-surface text-foreground text-sm"
-            editable={!isLoading}
+            editable={!isLoading && trialActive}
             onSubmitEditing={handleSendMessage}
             returnKeyType="send"
           />
           <TouchableOpacity
             onPress={handleSendMessage}
-            disabled={!inputText.trim() || isLoading}
+            disabled={!inputText.trim() || isLoading || !trialActive}
             className="w-10 h-10 rounded-full bg-primary items-center justify-center"
-            style={{ opacity: !inputText.trim() || isLoading ? 0.5 : 1 }}
+            style={{ opacity: !inputText.trim() || isLoading || !trialActive ? 0.5 : 1 }}
           >
             <Text className="text-lg">✨</Text>
           </TouchableOpacity>

@@ -35,6 +35,12 @@ export function getApiBaseUrl(): string {
     return API_BASE_URL.replace(/\/$/, "");
   }
 
+  // Indirizzo impostato sul telefono, così la PWA parla con casa anche da fuori.
+  if (ReactNative.Platform.OS === "web" && typeof window !== "undefined") {
+    const saved = window.localStorage?.getItem("dib_api_base");
+    if (saved) return saved.replace(/\/$/, "");
+  }
+
   // On web, derive from current hostname by replacing port 8081 with 3000
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
     const { protocol, hostname } = window.location;
